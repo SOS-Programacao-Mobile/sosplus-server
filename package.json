@@ -9,12 +9,15 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
+    "test": "npm run build && node --test test/auth.test.mjs",
+    "test:integration": "npm run build && node --test test/auth.integration.test.mjs",
     "migration:run": "tsx src/database/migrations/run.ts",
     "migration:status": "tsx src/database/migrations/status.ts"
   },
   "dependencies": {
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
+    "express-rate-limit": "^8.7.0",
     "mysql2": "^3.14.4"
   },
   "devDependencies": {

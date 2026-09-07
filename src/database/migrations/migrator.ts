@@ -41,7 +41,7 @@ export async function runMigrations(): Promise<string[]> {
       "SELECT GET_LOCK('sosplus_schema_migrations', 10) AS acquired"
     );
 
-    if (lockRows[0]?.acquired !== 1) {
+    if (Number(lockRows[0]?.acquired) !== 1) {
       throw new Error('Não foi possível obter o bloqueio de migrações.');
     }
 

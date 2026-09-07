@@ -89,3 +89,50 @@ As migrações seguem o MER do SOSPlus e criam as tabelas `usuarios`, `categoria
 Cada tabela possui sua própria migração. Para adicionar uma tabela ou alterar uma existente, crie uma nova migração com o próximo número, registre-a no arquivo `index.ts` e execute o comando de migração. Nunca altere uma migração que já tenha sido aplicada em outro banco.
 
 O MySQL faz commit implícito de alterações de estrutura. Uma migração com vários comandos pode ficar parcialmente aplicada se falhar; inspecione o banco antes de repetir. O executor usa um bloqueio no MySQL para impedir execuções simultâneas.
+
+## Cadastro e autenticação
+
+| Método | Rota | Uso |
+| --- | --- | --- |
+| POST | `/api/v1/auth/register` | Cadastra usuário e perfil na mesma transação. |
+| POST | `/api/v1/auth/login` | Valida e-mail, senha, perfil e conta ativa; retorna sessão. |
+| GET | `/api/v1/auth/me` | Retorna o usuário da sessão. |
+| POST | `/api/v1/auth/logout` | Revoga a sessão. |
+
+Cadastro de doador:
+
+```json
+{
+  "tipo": "DOADOR",
+  "nome": "Nome do doador",
+  "email": "doador@example.com",
+  "senha": "uma-senha-segura",
+  "confirmacaoSenha": "uma-senha-segura"
+}
+```
+
+Para ONG, use `"tipo": "ONG"`, informe o nome da organização e acrescente `cnpj`. Nome, e-mail, senha e confirmação são obrigatórios nos dois perfis. A senha deve ter de 8 a 128 caracteres e coincidir exatamente com a confirmação. O e-mail é normalizado para minúsculas e é único entre todos os usuários. CNPJ é obrigatório, normalizado e único para ONGs. CPF de doador é opcional (migração 014).
+
+O CNPJ aceita formato numérico e alfanumérico, com ou sem máscara, validando os dígitos segundo o [manual da Receita Federal](https://www.gov.br/receitafederal/pt-br/centrais-de-conteudo/publicacoes/documentos-tecnicos/cnpj/manual-dv-cnpj.pdf). Essa validação não consulta a situação cadastral da organização.
+
+No login, envie `email`, `senha` e `tipo`. A resposta contém `token`, `expiresAt` e `usuario` (`id`, `nome`, `email`, `tipo`, `cnpj`). Envie `Authorization: Bearer <token>` nas rotas `/me` e `/logout`. A sessão expira em 24 horas e continua válida entre reinícios do servidor. A migração 015 cria `sessoes`.
+
+Senhas usam scrypt com salt individual. O banco guarda apenas o hash do token de sessão; nunca a confirmação de senha. As respostas públicas não incluem hashes. Cadastro e login têm limite compartilhado de 30 tentativas por IP a cada 15 minutos, em memória por processo. Erros de validação retornam 400, credenciais/sessões inválidas 401, duplicidades 409 e excesso de tentativas 429. Configure HTTPS ao disponibilizar a API fora do desenvolvimento local.
+
+## Testes de autenticação
+
+```bash
+npm test
+```
+
+O teste de integração exige `RUN_AUTH_INTEGRATION=1` e um banco cujo nome termine em `_test`. Ele aplica as migrações, testa a API com MySQL e remove somente as contas criadas por ele:
+
+```bash
+MYSQL_DATABASE=sosplus_auth_test MYSQL_PUBLISHED_PORT=13307 API_PUBLISHED_PORT=13001 \
+  docker compose --env-file /dev/null -p sosplus-auth-check up -d --build --wait
+RUN_AUTH_INTEGRATION=1 MYSQL_HOST=127.0.0.1 MYSQL_PORT=13307 \
+  MYSQL_DATABASE=sosplus_auth_test MYSQL_USER=sosplus MYSQL_PASSWORD=sosplus_dev_local \
+  npm run test:integration
+```
+
+O app Android usa `10.0.2.2:3000` no emulador. Para celular USB, use `adb reverse tcp:3000 tcp:3000` e compile o app com `-PapiBaseUrl=http://127.0.0.1:3000`. Consulte também o README do aplicativo.
