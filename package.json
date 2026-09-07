@@ -1,0 +1,26 @@
+{
+  "name": "sosplus-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "API inicial do SOSPlus",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "typecheck": "tsc --noEmit",
+    "migration:run": "tsx src/database/migrations/run.ts",
+    "migration:status": "tsx src/database/migrations/status.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "mysql2": "^3.14.4"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.5",
+    "@types/node": "^24.10.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
