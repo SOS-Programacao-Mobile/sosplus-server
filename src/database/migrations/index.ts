@@ -12,6 +12,8 @@ import { createNecessidades } from './010-create-necessidades.js';
 import { createDoacoes } from './011-create-doacoes.js';
 import { createDoacoesItens } from './012-create-doacoes-itens.js';
 import { createPublicacoes } from './013-create-publicacoes.js';
+import { optionalCpfDoador } from './014-optional-cpf-doador.js';
+import { createSessoes } from './015-create-sessoes.js';
 
 export const migrations: Migration[] = [
   createUsuarios,
@@ -26,7 +28,9 @@ export const migrations: Migration[] = [
   createNecessidades,
   createDoacoes,
   createDoacoesItens,
-  createPublicacoes
+  createPublicacoes,
+  optionalCpfDoador,
+  createSessoes
 ];
 
 const migrationIds = migrations.map((migration) => migration.id);
