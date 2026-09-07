@@ -1,0 +1,41 @@
+# Ambiente local de desenvolvimento.
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-sosplus_01}
+      MYSQL_USER: ${MYSQL_USER:-sosplus}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-sosplus_dev_local}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-sosplus_root_dev_local}
+    ports:
+      - "127.0.0.1:${MYSQL_PUBLISHED_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=\"$$MYSQL_PASSWORD\" mysql --protocol=TCP -h 127.0.0.1 -u\"$$MYSQL_USER\" \"$$MYSQL_DATABASE\" -e 'SELECT 1' >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+  api:
+    build: .
+    environment:
+      PORT: "3000"
+      MYSQL_HOST: mysql
+      MYSQL_PORT: "3306"
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-sosplus_01}
+      MYSQL_USER: ${MYSQL_USER:-sosplus}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-sosplus_dev_local}
+    ports:
+      - "127.0.0.1:${API_PUBLISHED_PORT:-3000}:3000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/v1/health/database').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+volumes:
+  mysql_data:
