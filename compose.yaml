@@ -26,6 +26,10 @@ services:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-sosplus_01}
       MYSQL_USER: ${MYSQL_USER:-sosplus}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-sosplus_dev_local}
+      PERSONAL_DATA_ENCRYPTION_KEY: ${PERSONAL_DATA_ENCRYPTION_KEY:?Configure PERSONAL_DATA_ENCRYPTION_KEY no arquivo .env}
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
+      LOG_HTTP: ${LOG_HTTP:-true}
+      LOG_SQL: ${LOG_SQL:-true}
     ports:
       - "127.0.0.1:${API_PUBLISHED_PORT:-3000}:3000"
     depends_on:

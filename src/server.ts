@@ -1,6 +1,8 @@
 import { app } from './app.js';
 import { env } from './config/env.js';
 import { closeDatabase } from './database/mysql.js';
+import { assertPersonalDataEncryptionKey } from './security/personal-data.js';
+import { logFatal, logInfo } from './observability/logger.js';
 
 function printBanner(port: number | string): void {
   // ANSI color codes matching the app's theme
@@ -41,14 +43,29 @@ ${purple}  ▸${reset} API rodando em ${white}http://localhost:${port}${reset}
   console.log(banner);
 }
 
+// Não sobe a API sem a chave; as migrações, por outro lado, podem rodar antes dela.
+try {
+  assertPersonalDataEncryptionKey();
+} catch (error) {
+  logFatal('Configuração obrigatória inválida; API não iniciada', error);
+  throw error;
+}
+
 const server = app.listen(env.port, () => {
   printBanner(env.port);
+  logInfo('API iniciada', { porta: env.port });
+});
+
+server.on('error', (error) => {
+  logFatal('API não conseguiu iniciar', error, { porta: env.port });
+  process.exitCode = 1;
 });
 
 async function shutdown(signal: string): Promise<void> {
-  console.log(`${signal} recebido. Encerrando API...`);
+  logInfo('Encerramento solicitado', { sinal: signal });
   server.close(async () => {
     await closeDatabase();
+    logInfo('API encerrada');
     process.exit(0);
   });
 }

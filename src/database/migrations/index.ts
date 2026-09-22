@@ -14,6 +14,9 @@ import { createDoacoesItens } from './012-create-doacoes-itens.js';
 import { createPublicacoes } from './013-create-publicacoes.js';
 import { optionalCpfDoador } from './014-optional-cpf-doador.js';
 import { createSessoes } from './015-create-sessoes.js';
+import { createLocalizacoesUsuario } from './016-create-localizacoes-usuario.js';
+import { createFotosPerfil } from './017-create-fotos-perfil.js';
+import { createDadosPessoaisUsuario } from './018-create-dados-pessoais-usuario.js';
 
 export const migrations: Migration[] = [
   createUsuarios,
@@ -30,7 +33,10 @@ export const migrations: Migration[] = [
   createDoacoesItens,
   createPublicacoes,
   optionalCpfDoador,
-  createSessoes
+  createSessoes,
+  createLocalizacoesUsuario,
+  createFotosPerfil,
+  createDadosPessoaisUsuario
 ];
 
 const migrationIds = migrations.map((migration) => migration.id);
