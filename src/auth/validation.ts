@@ -71,3 +71,102 @@ export function validateLogin(value: unknown) {
   const body = bodyObject(value);
   return { tipo: tipo(body), email: email(body), senha: required(body, 'senha', 'Senha', 128, false) };
 }
+
+export function validateUserLocation(value: unknown) {
+  const body = bodyObject(value);
+  const cidade = required(body, 'cidade', 'Cidade', 100);
+  const estado = required(body, 'estado', 'Estado', 100);
+  const latitude = body.latitude;
+  const longitude = body.longitude;
+  if (typeof latitude !== 'number' || !Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+      typeof longitude !== 'number' || !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    throw new AuthError(400, 'Coordenadas inválidas.');
+  }
+  return { cidade, estado, latitude, longitude };
+}
+
+export function validateProfilePhoto(value: unknown, mimeType: unknown) {
+  if (!Buffer.isBuffer(value) || value.length === 0 || value.length > 1024 * 1024) {
+    throw new AuthError(400, 'Escolha uma imagem de até 1 MB.');
+  }
+  if (mimeType !== 'image/jpeg' && mimeType !== 'image/png' && mimeType !== 'image/webp') {
+    throw new AuthError(400, 'Use uma imagem JPEG, PNG ou WebP.');
+  }
+
+  const jpeg = value.length >= 3 && value[0] === 0xff && value[1] === 0xd8 && value[2] === 0xff;
+  const png = value.length >= 8 && value.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  const webp = value.length >= 12 && value.subarray(0, 4).toString('ascii') === 'RIFF' && value.subarray(8, 12).toString('ascii') === 'WEBP';
+  if ((mimeType === 'image/jpeg' && !jpeg) || (mimeType === 'image/png' && !png) || (mimeType === 'image/webp' && !webp)) {
+    throw new AuthError(400, 'O conteúdo enviado não é uma imagem válida.');
+  }
+  return { conteudo: value, mimeType };
+}
+
+export function validatePasswordUpdate(value: unknown) {
+  const body = bodyObject(value);
+  const senhaAtual = required(body, 'senhaAtual', 'Senha atual', 128, false);
+  const novaSenha = required(body, 'novaSenha', 'Nova senha', 128, false);
+  const confirmacao = required(body, 'confirmacaoSenha', 'Confirmação da nova senha', 128, false);
+  if (novaSenha.length < 8) throw new AuthError(400, 'A nova senha deve ter pelo menos 8 caracteres.');
+  if (novaSenha !== confirmacao) throw new AuthError(400, 'A confirmação da nova senha não confere.');
+  if (novaSenha === senhaAtual) throw new AuthError(400, 'A nova senha deve ser diferente da senha atual.');
+  return { senhaAtual, novaSenha };
+}
+
+const tiposSanguineos = new Set(['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']);
+const generos = new Set(['MASCULINO', 'FEMININO', 'OUTROS', 'PREFIRO_NAO_INFORMAR']);
+
+function optional(body: Record<string, unknown>, field: string, label: string, max: number): string | null {
+  const raw = body[field];
+  if (raw === null || raw === undefined || raw === '') return null;
+  if (typeof raw !== 'string') throw new AuthError(400, `${label} é inválido.`);
+  const value = raw.trim();
+  if (!value) return null;
+  if (value.length > max) throw new AuthError(400, `${label} deve ter no máximo ${max} caracteres.`);
+  return value;
+}
+
+export function normalizeCpf(value: string): string {
+  return value.replace(/\D/g, '');
+}
+
+export function validCpf(value: string): boolean {
+  const cpf = normalizeCpf(value);
+  if (!/^\d{11}$/.test(cpf) || /^(.)\1{10}$/.test(cpf)) return false;
+  const digit = (size: number) => {
+    const sum = cpf.slice(0, size).split('').reduce((total, char, index) => total + Number(char) * (size + 1 - index), 0);
+    const remainder = (sum * 10) % 11;
+    return remainder === 10 ? 0 : remainder;
+  };
+  return digit(9) === Number(cpf[9]) && digit(10) === Number(cpf[10]);
+}
+
+export function validatePersonalData(value: unknown) {
+  const body = bodyObject(value);
+  const nome = required(body, 'nome', 'Nome', 100);
+  const sobrenome = optional(body, 'sobrenome', 'Sobrenome', 150);
+  const cpfInformado = optional(body, 'cpf', 'CPF', 14);
+  const cpf = cpfInformado ? normalizeCpf(cpfInformado) : null;
+  if (cpf && !validCpf(cpf)) throw new AuthError(400, 'Digite um CPF válido.');
+
+  const dataNascimento = optional(body, 'dataNascimento', 'Data de nascimento', 10);
+  if (dataNascimento) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dataNascimento)) throw new AuthError(400, 'Use uma data de nascimento válida.');
+    const parsed = new Date(`${dataNascimento}T12:00:00Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== dataNascimento || parsed >= new Date()) {
+      throw new AuthError(400, 'Use uma data de nascimento válida e anterior a hoje.');
+    }
+  }
+
+  const endereco = optional(body, 'endereco', 'Endereço', 500);
+  const telefoneInformado = optional(body, 'telefone', 'Telefone', 25);
+  const telefone = telefoneInformado?.replace(/[^\d+]/g, '') ?? null;
+  if (telefone && !/^\+?\d{10,15}$/.test(telefone)) throw new AuthError(400, 'Digite um telefone válido com DDD.');
+
+  const tipoSanguineo = optional(body, 'tipoSanguineo', 'Tipo sanguíneo', 3);
+  if (tipoSanguineo && !tiposSanguineos.has(tipoSanguineo)) throw new AuthError(400, 'Selecione um tipo sanguíneo válido.');
+  const genero = optional(body, 'genero', 'Gênero', 24);
+  if (genero && !generos.has(genero)) throw new AuthError(400, 'Selecione uma opção de gênero válida.');
+
+  return { nome, sobrenome, cpf, dataNascimento, endereco, tipoSanguineo, genero, telefone };
+}

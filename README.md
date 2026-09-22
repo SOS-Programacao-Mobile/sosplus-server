@@ -9,6 +9,8 @@ Instale e inicie Docker com Compose v2. É necessário acesso ao repositório pr
 ```bash
 git clone https://github.com/SOS-Programacao-Mobile/sosplus-server.git
 cd sosplus-server
+cp .env.example .env
+# Gere uma chave com `openssl rand -hex 32` e cole em PERSONAL_DATA_ENCRYPTION_KEY no .env
 docker compose up -d --build --wait
 ```
 
@@ -16,7 +18,7 @@ O comando cria o MySQL, espera o banco aceitar conexões, aplica as migrações 
 
 No DataGrip, conecte em `127.0.0.1:3306`, banco `sosplus_01`, usuário `sosplus`, senha padrão `sosplus_dev_local`. Essas credenciais são apenas para desenvolvimento local; as portas são publicadas somente em `127.0.0.1`.
 
-Para personalizar, copie `.env.example` para `.env` antes da primeira execução. Se as portas estiverem ocupadas, altere `MYSQL_PUBLISHED_PORT` e `API_PUBLISHED_PORT`. O `.env` não é enviado ao Git nem à imagem. Alterar senhas no `.env` após inicializar o volume não altera as contas existentes no MySQL.
+`PERSONAL_DATA_ENCRYPTION_KEY` é obrigatória, deve ter 32 bytes em hexadecimal ou Base64 e não pode ser enviada ao Git. Guarde-a em um gerenciador de segredos nos ambientes publicados: perdê-la impede recuperar os dados pessoais cifrados. Se as portas estiverem ocupadas, altere `MYSQL_PUBLISHED_PORT` e `API_PUBLISHED_PORT`. O `.env` não é enviado ao Git nem à imagem. Alterar senhas no `.env` após inicializar o volume não altera as contas existentes no MySQL.
 
 ## Atualizar o banco de cada colega
 
@@ -62,6 +64,29 @@ curl http://localhost:3000/api/v1/health
 curl http://localhost:3000/api/v1/health/database
 ```
 
+Durante o desenvolvimento, a API registra cada requisição e cada consulta SQL em uma
+linha no formato `data nível mensagem chave=valor`:
+
+```text
+2026-09-22T12:30:15Z INFO Requisição concluída request_id=abc metodo=POST rota=/api/v1/auth/login status=200 duracao_ms=84.2
+2026-09-22T12:30:15Z DEBUG SQL executado request_id=abc operacao=execute sql="SELECT ... WHERE u.email = '<string:18 caracteres>' LIMIT 1" linhas_retornadas=1 duracao_ms=3.1
+```
+
+`LOG_LEVEL` aceita `TRACE`, `DEBUG`, `INFO`, `WARN`, `ERROR` e `FATAL`. O padrão é
+`DEBUG` em desenvolvimento e `INFO` em produção; as consultas SQL normais aparecem em
+`DEBUG` e falhas SQL aparecem sempre em `ERROR`. O SQL é montado com os parâmetros em
+suas posições, mas os valores são resumidos para não expor senhas, tokens, fotos,
+coordenadas ou dados pessoais. Use `LOG_HTTP=false` ou `LOG_SQL=false` no `.env` para
+desligar cada grupo. O campo `request_id` é enviado pelo app e aparece tanto no Logcat
+quanto nos logs HTTP e SQL do backend, permitindo acompanhar uma chamada de ponta a
+ponta.
+
+No Android, as chamadas HTTP aparecem somente na variante debug. Para acompanhar:
+
+```bash
+adb logcat -s SOSPlus-HTTP
+```
+
 ## Rotas iniciais
 
 | Método | Rota | Finalidade |
@@ -84,7 +109,7 @@ npm run migration:status
 npm run migration:run
 ```
 
-As migrações seguem o MER do SOSPlus e criam as tabelas `usuarios`, `categorias`, `perfis_doador`, `perfis_ong`, `ong_categorias`, `enderecos_ong`, `seguidores_ong`, `campanhas`, `necessidades`, `doacoes`, `doacoes_itens` e `publicacoes`.
+As migrações seguem o MER do SOSPlus e criam as tabelas `usuarios`, `localizacoes_usuario`, `fotos_perfil`, `dados_pessoais_usuario`, `categorias`, `perfis_doador`, `perfis_ong`, `ong_categorias`, `enderecos_ong`, `seguidores_ong`, `campanhas`, `necessidades`, `doacoes`, `doacoes_itens` e `publicacoes`.
 
 Cada tabela possui sua própria migração. Para adicionar uma tabela ou alterar uma existente, crie uma nova migração com o próximo número, registre-a no arquivo `index.ts` e execute o comando de migração. Nunca altere uma migração que já tenha sido aplicada em outro banco.
 
@@ -97,6 +122,10 @@ O MySQL faz commit implícito de alterações de estrutura. Uma migração com v
 | POST | `/api/v1/auth/register` | Cadastra usuário e perfil na mesma transação. |
 | POST | `/api/v1/auth/login` | Valida e-mail, senha, perfil e conta ativa; retorna sessão. |
 | GET | `/api/v1/auth/me` | Retorna o usuário da sessão. |
+| PUT | `/api/v1/auth/localizacao` | Salva a última localização aproximada do usuário autenticado. |
+| GET/PUT | `/api/v1/auth/foto-perfil` | Consulta ou substitui a foto de perfil. |
+| GET/PUT | `/api/v1/auth/dados-pessoais` | Consulta ou atualiza o cadastro pessoal cifrado do doador. |
+| PUT | `/api/v1/auth/senha` | Redefine a senha após validar a senha atual. |
 | POST | `/api/v1/auth/logout` | Revoga a sessão. |
 
 Cadastro de doador:
@@ -115,7 +144,13 @@ Para ONG, use `"tipo": "ONG"`, informe o nome da organização e acrescente `cnp
 
 O CNPJ aceita formato numérico e alfanumérico, com ou sem máscara, validando os dígitos segundo o [manual da Receita Federal](https://www.gov.br/receitafederal/pt-br/centrais-de-conteudo/publicacoes/documentos-tecnicos/cnpj/manual-dv-cnpj.pdf). Essa validação não consulta a situação cadastral da organização.
 
-No login, envie `email`, `senha` e `tipo`. A resposta contém `token`, `expiresAt` e `usuario` (`id`, `nome`, `email`, `tipo`, `cnpj`). Envie `Authorization: Bearer <token>` nas rotas `/me` e `/logout`. A sessão expira em 24 horas e continua válida entre reinícios do servidor. A migração 015 cria `sessoes`.
+No login, envie `email`, `senha` e `tipo`. A resposta contém `token`, `expiresAt` e `usuario` (`id`, `nome`, `email`, `tipo`, `cnpj`, `localizacao`). Envie `Authorization: Bearer <token>` nas rotas `/me`, `/localizacao` e `/logout`. A sessão expira em 24 horas e continua válida entre reinícios do servidor. A migração 015 cria `sessoes`.
+
+`PUT /api/v1/auth/localizacao` recebe `cidade`, `estado`, `latitude` e `longitude`. A tabela `localizacoes_usuario` mantém somente o último ponto aproximado de cada usuário e a data de atualização; ela é atualizada em cada login pelo aplicativo quando a permissão de localização aproximada for concedida.
+
+`PUT /api/v1/auth/foto-perfil` recebe diretamente uma imagem JPEG, PNG ou WebP de até 1 MB e mantém uma foto por usuário na tabela `fotos_perfil`. `PUT /api/v1/auth/senha` recebe `senhaAtual`, `novaSenha` e `confirmacaoSenha`; ao alterar a senha, as outras sessões do usuário são revogadas.
+
+`PUT /api/v1/auth/dados-pessoais` aceita nome, sobrenome, CPF, data de nascimento, endereço, tipo sanguíneo, gênero e telefone. Os campos detalhados são cifrados com AES-256-GCM e autenticação vinculada ao usuário e ao nome do campo. O nome completo também atualiza o nome de exibição do perfil. A chave fica fora do banco em `PERSONAL_DATA_ENCRYPTION_KEY`.
 
 Senhas usam scrypt com salt individual. O banco guarda apenas o hash do token de sessão; nunca a confirmação de senha. As respostas públicas não incluem hashes. Cadastro e login têm limite compartilhado de 30 tentativas por IP a cada 15 minutos, em memória por processo. Erros de validação retornam 400, credenciais/sessões inválidas 401, duplicidades 409 e excesso de tentativas 429. Configure HTTPS ao disponibilizar a API fora do desenvolvimento local.
 
@@ -128,6 +163,7 @@ npm test
 O teste de integração exige `RUN_AUTH_INTEGRATION=1` e um banco cujo nome termine em `_test`. Ele aplica as migrações, testa a API com MySQL e remove somente as contas criadas por ele:
 
 ```bash
+export PERSONAL_DATA_ENCRYPTION_KEY="$(openssl rand -hex 32)"
 MYSQL_DATABASE=sosplus_auth_test MYSQL_PUBLISHED_PORT=13307 API_PUBLISHED_PORT=13001 \
   docker compose --env-file /dev/null -p sosplus-auth-check up -d --build --wait
 RUN_AUTH_INTEGRATION=1 MYSQL_HOST=127.0.0.1 MYSQL_PORT=13307 \
