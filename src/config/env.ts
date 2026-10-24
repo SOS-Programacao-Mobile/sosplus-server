@@ -28,6 +28,12 @@ function logLevelValue(): LogLevelName {
 
 export const env = {
   port: Number(process.env.PORT ?? 3000),
+  recoveryEnabled: booleanValue('RECOVERY_ENABLED', false),
+  smtp: {
+    host: process.env.SMTP_HOST ?? '127.0.0.1',
+    port: Number(process.env.SMTP_PORT ?? 1025),
+    from: process.env.SMTP_FROM ?? 'no-reply@sosplus.local'
+  },
   logging: {
     level: logLevelValue(),
     http: booleanValue('LOG_HTTP', true),
@@ -44,3 +50,7 @@ export const env = {
     password: required('MYSQL_PASSWORD')
   }
 };
+
+if (env.recoveryEnabled && (process.env.NODE_ENV === 'production' || !['127.0.0.1', 'localhost', '::1', 'mailpit'].includes(env.smtp.host))) {
+  throw new Error('A recuperação desta entrega permite somente caixa de desenvolvimento local.');
+}

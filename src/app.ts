@@ -2,7 +2,13 @@ import express from 'express';
 import { ongsRouter } from './routes/ongs.js';
 import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
+import { imagesRouter } from './routes/images.js';
+import { campaignsRouter } from './routes/campaigns.js';
+import { walletRouter } from './routes/wallet.js';
+import { materialsRouter } from './routes/materials.js';
+import { socialRouter } from './routes/social.js';
 import { usuariosRouter } from './routes/usuarios.js';
+import { categories } from './ongs/service.js';
 import { AuthError } from './auth/validation.js';
 import { httpLogger, logError, logWarn } from './observability/logger.js';
 
@@ -21,8 +27,14 @@ app.get('/', (_request, response) => {
 
 app.use('/api/v1/health', healthRouter);
 app.use('/api/v1/auth', authRouter);
+app.use('/api/v1/imagens', imagesRouter);
 app.use('/api/v1/ongs', ongsRouter);
 app.use('/api/v1/usuarios', usuariosRouter);
+app.get('/api/v1/categorias', async (_request, response) => { response.json({ resultados: await categories() }); });
+app.use('/api/v1/campanhas', campaignsRouter);
+app.use('/api/v1', walletRouter);
+app.use('/api/v1', materialsRouter);
+app.use('/api/v1', socialRouter);
 
 app.use((_request, response) => {
   response.status(404).json({ error: 'Rota não encontrada.' });

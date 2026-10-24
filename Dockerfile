@@ -14,4 +14,4 @@ COPY --from=build --chown=node:node /app/dist ./dist
 COPY --from=build --chown=node:node /app/package.json ./package.json
 USER node
 EXPOSE 3000
-CMD ["sh", "-c", "node dist/database/migrations/run.js && exec node dist/server.js"]
+CMD ["sh", "-c", "node dist/database/migrations/run.js && node dist/database/migrations/backfill-cpf-index.js && exec node dist/server.js"]

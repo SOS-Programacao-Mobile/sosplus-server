@@ -2,6 +2,7 @@ import { app } from './app.js';
 import { env } from './config/env.js';
 import { closeDatabase } from './database/mysql.js';
 import { assertPersonalDataEncryptionKey } from './security/personal-data.js';
+import { assertCpfIndexReady } from './security/cpf-index.js';
 import { logFatal, logInfo } from './observability/logger.js';
 
 function printBanner(port: number | string): void {
@@ -46,6 +47,7 @@ ${purple}  ▸${reset} API rodando em ${white}http://localhost:${port}${reset}
 // Não sobe a API sem a chave; as migrações, por outro lado, podem rodar antes dela.
 try {
   assertPersonalDataEncryptionKey();
+  await assertCpfIndexReady();
 } catch (error) {
   logFatal('Configuração obrigatória inválida; API não iniciada', error);
   throw error;

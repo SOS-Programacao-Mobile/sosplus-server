@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 import { database } from '../database/mysql.js';
-import { decryptPersonalData, encryptPersonalData } from '../security/personal-data.js';
+import { decryptPersonalData, encryptPersonalData, fingerprintPersonalData } from '../security/personal-data.js';
 import { dummyHash, hashPassword, verifyPassword } from './password.js';
 import { AuthError, validateLogin, validatePasswordUpdate, validatePersonalData, validateProfilePhoto, validateRegistration, validateUserLocation, type TipoUsuario } from './validation.js';
 
@@ -70,14 +70,22 @@ export async function register(body: unknown): Promise<PublicUser> {
     if (input.tipo === 'ONG') {
       await connection.execute('INSERT INTO perfis_ong (usuario_id, nome, cnpj) VALUES (?, ?, ?)', [id, input.nome, input.cnpj]);
     } else {
-      await connection.execute('INSERT INTO perfis_doador (usuario_id, nome) VALUES (?, ?)', [id, input.nome]);
+      await connection.execute('INSERT INTO perfis_doador (usuario_id, nome, cpf_hash) VALUES (?, ?, ?)', [
+        id, input.nome, input.cpf ? fingerprintPersonalData('cpf', input.cpf) : null
+      ]);
+      if (input.cpf) {
+        await connection.execute(
+          'INSERT INTO dados_pessoais_usuario (usuario_id, nome_cifrado, cpf_cifrado) VALUES (?, ?, ?)',
+          [id, encryptPersonalData(id, 'nome', input.nome), encryptPersonalData(id, 'cpf', input.cpf)]
+        );
+      }
     }
     await connection.commit();
     return { id, nome: input.nome, email: input.email, tipo: input.tipo, cnpj: input.cnpj, localizacao: null };
   } catch (error) {
     await connection.rollback();
     if ((error as { code?: string }).code === 'ER_DUP_ENTRY') {
-      throw new AuthError(409, 'E-mail ou CNPJ já cadastrado.');
+      throw new AuthError(409, input.cpf ? 'E-mail, CNPJ ou CPF já cadastrado.' : 'E-mail ou CNPJ já cadastrado.');
     }
     throw error;
   } finally {
@@ -238,10 +246,16 @@ export async function updatePersonalData(token: string, body: unknown): Promise<
       [user.id, encrypted.nome, encrypted.sobrenome, encrypted.cpf, encrypted.dataNascimento,
         encrypted.endereco, encrypted.tipoSanguineo, encrypted.genero, encrypted.telefone]
     );
-    await connection.execute('UPDATE perfis_doador SET nome = ? WHERE usuario_id = ?', [displayName, user.id]);
+    await connection.execute(
+      'UPDATE perfis_doador SET nome = ?, cpf = NULL, cpf_hash = ? WHERE usuario_id = ?',
+      [displayName, input.cpf ? fingerprintPersonalData('cpf', input.cpf) : null, user.id]
+    );
     await connection.commit();
   } catch (error) {
     await connection.rollback();
+    if ((error as { code?: string }).code === 'ER_DUP_ENTRY') {
+      throw new AuthError(409, 'CPF já cadastrado em outra conta.');
+    }
     throw error;
   } finally {
     connection.release();

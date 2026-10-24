@@ -9,20 +9,27 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test test/auth.test.mjs",
-    "test:integration": "npm run build && node --test test/auth.integration.test.mjs",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "test:integration": "npm run build && node --test --test-concurrency=1 test/*.integration.test.mjs",
     "migration:run": "tsx src/database/migrations/run.ts",
-    "migration:status": "tsx src/database/migrations/status.ts"
+    "migration:status": "tsx src/database/migrations/status.ts",
+    "migration:preflight": "tsx src/database/migrations/preflight.ts",
+    "migration:cpf-backfill": "tsx src/database/migrations/backfill-cpf-index.ts",
+    "seed:reference": "tsx src/database/seed.ts",
+    "seed:demo": "tsx src/database/seed.ts --demo",
+    "seed:showcase": "tsx src/database/seed.ts --showcase"
   },
   "dependencies": {
     "dotenv": "^16.6.1",
     "express": "^5.1.0",
     "express-rate-limit": "^8.7.0",
-    "mysql2": "^3.14.4"
+    "mysql2": "^3.14.4",
+    "nodemailer": "^10.2.1"
   },
   "devDependencies": {
     "@types/express": "^5.0.5",
     "@types/node": "^24.10.0",
+    "@types/nodemailer": "^8.0.2",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   }

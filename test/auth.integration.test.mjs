@@ -17,15 +17,16 @@ test('cadastro, persistência, login, sessão e logout para doador e ONG', {
   const base = `http://127.0.0.1:${server.address().port}/api/v1/auth`;
   const suffix = randomBytes(6).toString('hex');
   const emails = [`doador-${suffix}@example.test`, `ong-${suffix}@example.test`, `rollback-${suffix}@example.test`];
-  const call = async (path, body, token) => {
+  const call = async (path, body, token, method) => {
     const response = await fetch(base + path, {
-      method: body === undefined ? 'GET' : 'POST',
+      method: method ?? (body === undefined ? 'GET' : 'POST'),
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) })
     });
     return { status: response.status, body: response.status === 204 ? null : await response.json() };
   };
   try {
+    assert.equal((await call('/login', { tipo: 'DOADOR', email: 'admin@example.test', senha: '1234' })).status, 401);
     for (const [index, tipo] of ['DOADOR', 'ONG'].entries()) {
       const body = { tipo, nome: `Cadastro ${tipo}`, email: emails[index], senha: 'Teste-seguro-123', confirmacaoSenha: 'Teste-seguro-123', cnpj: '11.222.333/0001-81' };
       for (const field of ['nome', 'email', 'senha', 'confirmacaoSenha', ...(tipo === 'ONG' ? ['cnpj'] : [])]) {
@@ -50,7 +51,11 @@ test('cadastro, persistência, login, sessão e logout para doador e ONG', {
       const logged = await call('/login', body);
       assert.equal(logged.status, 200);
       const { token } = logged.body;
-      assert.equal((await call('/me', undefined, token)).body.usuario.email, body.email);
+      const current = (await call('/me', undefined, token)).body.usuario;
+      assert.equal(current.email, body.email);
+      for (const field of ['senha_hash', 'cpf', 'cpf_hash', 'cpf_cifrado', 'telefone']) {
+        assert.equal(field in current, false, `Projeção pública não deve incluir ${field}`);
+      }
       const [sessions] = await database.execute('SELECT token_hash FROM sessoes WHERE usuario_id = ?', [logged.body.usuario.id]);
       assert.notEqual(sessions[0].token_hash, token, 'Token deve ser armazenado somente como hash');
       await database.execute('UPDATE usuarios SET ativo = 0 WHERE id = ?', [logged.body.usuario.id]);
@@ -63,7 +68,6 @@ test('cadastro, persistência, login, sessão e logout para doador e ONG', {
       assert.equal((await call('/me', undefined, token)).status, 401);
     }
     assert.equal((await call('/me')).status, 401);
-    assert.equal((await call('/login', { tipo: 'DOADOR', email: 'admin@example.test', senha: '1234' })).status, 401);
   } finally {
     for (const email of emails) await database.execute('DELETE FROM usuarios WHERE email = ?', [email]);
     await new Promise((resolve) => server.close(resolve));

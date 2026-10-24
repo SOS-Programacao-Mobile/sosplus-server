@@ -60,11 +60,16 @@ export function validateRegistration(value: unknown) {
   if (senha.length < 8) throw new AuthError(400, 'A senha deve ter pelo menos 8 caracteres.');
   if (senha !== confirmacao) throw new AuthError(400, 'As senhas não são iguais.');
   let cnpj: string | null = null;
+  let cpf: string | null = null;
   if (profile === 'ONG') {
     cnpj = normalizeCnpj(required(body, 'cnpj', 'CNPJ', 18));
     if (!validCnpj(cnpj)) throw new AuthError(400, 'Digite um CNPJ válido.');
+  } else {
+    const cpfInformado = optional(body, 'cpf', 'CPF', 14);
+    cpf = cpfInformado ? normalizeCpf(cpfInformado) : null;
+    if (cpf && !validCpf(cpf)) throw new AuthError(400, 'Digite um CPF válido.');
   }
-  return { tipo: profile, nome, email: address, senha, cnpj };
+  return { tipo: profile, nome, email: address, senha, cnpj, cpf };
 }
 
 export function validateLogin(value: unknown) {
@@ -145,6 +150,9 @@ export function validatePersonalData(value: unknown) {
   const body = bodyObject(value);
   const nome = required(body, 'nome', 'Nome', 100);
   const sobrenome = optional(body, 'sobrenome', 'Sobrenome', 150);
+  if (nome.length + (sobrenome ? sobrenome.length + 1 : 0) > 150) {
+    throw new AuthError(400, 'Nome e sobrenome devem ter até 150 caracteres juntos.');
+  }
   const cpfInformado = optional(body, 'cpf', 'CPF', 14);
   const cpf = cpfInformado ? normalizeCpf(cpfInformado) : null;
   if (cpf && !validCpf(cpf)) throw new AuthError(400, 'Digite um CPF válido.');

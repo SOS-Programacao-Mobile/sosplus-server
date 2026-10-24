@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { validatePasswordUpdate, validatePersonalData, validateProfilePhoto, validateRegistration, validateUserLocation, validCnpj, validCpf } from '../dist/auth/validation.js';
 import { hashPassword, verifyPassword } from '../dist/auth/password.js';
+import { requireUserType, sessionToken } from '../dist/auth/session.js';
 
 test('campos obrigatórios, confirmação, e-mail e CNPJ para cada tipo', () => {
   for (const tipo of ['DOADOR', 'ONG']) {
@@ -15,6 +16,22 @@ test('campos obrigatórios, confirmação, e-mail e CNPJ para cada tipo', () => 
     assert.equal(validateRegistration({ ...input, email: ' CONTATO@EXAMPLE.COM ' }).email, 'contato@example.com');
   }
   for (const value of [null, [], {}, { tipo: 'ADMIN' }, { nome: 42 }]) assert.throws(() => validateRegistration(value), { status: 400 });
+});
+
+test('CPF é opcional somente no cadastro de doador e é normalizado quando informado', () => {
+  const base = { tipo: 'DOADOR', nome: 'Ana', email: 'ana@example.com', senha: 'senha1234', confirmacaoSenha: 'senha1234' };
+  assert.equal(validateRegistration(base).cpf, null);
+  assert.equal(validateRegistration({ ...base, cpf: '529.982.247-25' }).cpf, '52998224725');
+  assert.throws(() => validateRegistration({ ...base, cpf: '111.111.111-11' }), { status: 400 });
+});
+
+test('sessão compartilhada rejeita token ausente e perfil incompatível', () => {
+  const token = 'a'.repeat(64);
+  assert.equal(sessionToken({ headers: { authorization: `Bearer ${token}` } }), token);
+  assert.throws(() => sessionToken({ headers: {} }), { status: 401 });
+  const user = { id: '1', nome: 'ONG', email: 'ong@example.test', tipo: 'ONG', cnpj: null, localizacao: null };
+  assert.throws(() => requireUserType(user, 'DOADOR'), { status: 403 });
+  assert.equal(requireUserType(user, 'ONG'), user);
 });
 
 test('CNPJ numérico e alfanumérico com dígitos verificadores', () => {
@@ -65,6 +82,7 @@ test('dados pessoais normalizam CPF e telefone e validam campos sensíveis', () 
   assert.throws(() => validatePersonalData({ nome: 'Ana', dataNascimento: '2035-01-01' }), { status: 400 });
   assert.throws(() => validatePersonalData({ nome: 'Ana', tipoSanguineo: 'X+' }), { status: 400 });
   assert.throws(() => validatePersonalData({ nome: 'Ana', genero: 'QUALQUER' }), { status: 400 });
+  assert.throws(() => validatePersonalData({ nome: 'a'.repeat(100), sobrenome: 'b'.repeat(50) }), { status: 400 });
 });
 
 test('dados pessoais são cifrados com autenticação de usuário e campo', async () => {
@@ -72,12 +90,14 @@ test('dados pessoais são cifrados com autenticação de usuário e campo', asyn
   process.env.MYSQL_USER = 'unit_test';
   process.env.MYSQL_PASSWORD = 'unit_test';
   process.env.PERSONAL_DATA_ENCRYPTION_KEY = 'f1'.repeat(32);
-  const { encryptPersonalData, decryptPersonalData } = await import('../dist/security/personal-data.js');
+  const { encryptPersonalData, decryptPersonalData, fingerprintPersonalData } = await import('../dist/security/personal-data.js');
   const encrypted = encryptPersonalData('42', 'cpf', '52998224725');
   assert.ok(Buffer.isBuffer(encrypted));
   assert.equal(encrypted.includes(Buffer.from('52998224725')), false);
   assert.equal(decryptPersonalData('42', 'cpf', encrypted), '52998224725');
   assert.throws(() => decryptPersonalData('42', 'telefone', encrypted));
+  assert.equal(fingerprintPersonalData('cpf', '52998224725').equals(fingerprintPersonalData('cpf', '52998224725')), true);
+  assert.equal(fingerprintPersonalData('cpf', '52998224725').equals(fingerprintPersonalData('telefone', '52998224725')), false);
 });
 
 test('hash com salt não guarda senha em texto e verifica senha exata', async () => {

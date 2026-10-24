@@ -52,9 +52,14 @@ Para desenvolver com Node no computador, configure `.env` para um MySQL disponí
 
 ```bash
 npm ci
+npm run migration:preflight
 npm run migration:run
-npm run dev
+npm run migration:cpf-backfill
+npm run build
+npm start
 ```
+
+Quando o MySQL do SOSPlus já estiver ativo no Docker e publicar a porta `3306` em `127.0.0.1`, a API pode rodar diretamente no computador. Configure o `.env` local para esse banco e use a porta padrão `3000`. Antes de migrar um banco legado, faça backup e rode `migration:preflight`; ele informa IDs e tipos de conflito sem imprimir dados pessoais. Após aplicar migrações, `migration:cpf-backfill` cifra CPFs legados, cria o índice HMAC e limpa a coluna antiga, podendo ser repetido com segurança. O comando exige `PERSONAL_DATA_ENCRYPTION_KEY` configurada. `npm start` executa o código compilado em `dist`; para recompilar durante o desenvolvimento, execute `npm run build` antes de iniciar. Não suba um segundo MySQL na porta 3306.
 
 Em outra janela, teste as primeiras rotas:
 
@@ -128,19 +133,20 @@ O MySQL faz commit implícito de alterações de estrutura. Uma migração com v
 | PUT | `/api/v1/auth/senha` | Redefine a senha após validar a senha atual. |
 | POST | `/api/v1/auth/logout` | Revoga a sessão. |
 
-Cadastro de doador:
+Cadastro de doador (CPF opcional):
 
 ```json
 {
   "tipo": "DOADOR",
   "nome": "Nome do doador",
   "email": "doador@example.com",
+  "cpf": "529.982.247-25",
   "senha": "uma-senha-segura",
   "confirmacaoSenha": "uma-senha-segura"
 }
 ```
 
-Para ONG, use `"tipo": "ONG"`, informe o nome da organização e acrescente `cnpj`. Nome, e-mail, senha e confirmação são obrigatórios nos dois perfis. A senha deve ter de 8 a 128 caracteres e coincidir exatamente com a confirmação. O e-mail é normalizado para minúsculas e é único entre todos os usuários. CNPJ é obrigatório, normalizado e único para ONGs. CPF de doador é opcional (migração 014).
+Para ONG, use `"tipo": "ONG"`, informe o nome da organização e acrescente `cnpj`. Nome, e-mail, senha e confirmação são obrigatórios nos dois perfis. A senha deve ter de 8 a 128 caracteres e coincidir exatamente com a confirmação. O e-mail é normalizado para minúsculas e é único entre todos os usuários. CNPJ é obrigatório, normalizado e único para ONGs. CPF de doador é opcional, validado e cifrado; um HMAC com chave da aplicação garante unicidade sem armazenar o CPF em texto (migrações 014 e 019).
 
 O CNPJ aceita formato numérico e alfanumérico, com ou sem máscara, validando os dígitos segundo o [manual da Receita Federal](https://www.gov.br/receitafederal/pt-br/centrais-de-conteudo/publicacoes/documentos-tecnicos/cnpj/manual-dv-cnpj.pdf). Essa validação não consulta a situação cadastral da organização.
 
@@ -149,6 +155,26 @@ No login, envie `email`, `senha` e `tipo`. A resposta contém `token`, `expiresA
 `PUT /api/v1/auth/localizacao` recebe `cidade`, `estado`, `latitude` e `longitude`. A tabela `localizacoes_usuario` mantém somente o último ponto aproximado de cada usuário e a data de atualização; ela é atualizada em cada login pelo aplicativo quando a permissão de localização aproximada for concedida.
 
 `PUT /api/v1/auth/foto-perfil` recebe diretamente uma imagem JPEG, PNG ou WebP de até 1 MB e mantém uma foto por usuário na tabela `fotos_perfil`. `PUT /api/v1/auth/senha` recebe `senhaAtual`, `novaSenha` e `confirmacaoSenha`; ao alterar a senha, as outras sessões do usuário são revogadas.
+
+`POST /api/v1/imagens` recebe conteúdo JPEG, PNG ou WebP de até 1 MB e o cabeçalho `X-Image-Purpose` (`PERFIL_ONG`, `CAPA_ONG`, `CAMPANHA`, `NECESSIDADE`, `PUBLICACAO` ou `DOACAO_ITEM`). A resposta contém o ID da imagem local. `GET /api/v1/imagens/:id` permite baixar arquivo do próprio usuário, vinculado a conteúdo público ativo ou, para fotos de itens, às partes da doação. Imagens não vinculadas não ficam públicas.
+
+## Campanhas e carteira simulada
+
+Campanhas são criadas pela ONG como `RASCUNHO`, editáveis enquanto rascunho, e podem ser publicadas (`ATIVA`), encerradas ou canceladas conforme as transições permitidas. `GET /api/v1/campanhas` lista campanhas públicas com continuação; `GET /api/v1/campanhas/minhas` lista as da ONG autenticada. A API prioriza cidade/UF quando informadas e usa somente arrecadações `CONFIRMADA` no total.
+
+`GET/PUT /api/v1/carteira` consulta ou define `saldoCentavos` do próprio doador. `POST /api/v1/doacoes` cria uma intenção pendente e exige `Idempotency-Key`; repetir chave e dados retorna a mesma intenção, e a mesma chave com dados diferentes dá conflito. `POST /api/v1/doacoes/:id/confirmar` debita o saldo fictício uma única vez; `POST /api/v1/doacoes/:id/cancelar` cancela somente pendências. `GET /api/v1/doacoes` e `GET /api/v1/doacoes/:id` expõem apenas o histórico do doador autenticado.
+
+Este saldo é exclusivamente de demonstração: não existe pagamento, transferência, cobrança, reembolso ou integração com bancos/serviços financeiros externos. Exemplo: definir R$ 100,00 (`10000` centavos), confirmar contribuição de R$ 30,00 (`3000`) e consultar saldo de R$ 70,00 (`7000`); a campanha passa a mostrar R$ 30,00 arrecadados. Valores e comprovantes não representam dinheiro real.
+
+## Necessidades e doação de materiais
+
+ONGs criam e cancelam necessidades por `POST /api/v1/necessidades`, `GET /api/v1/necessidades/minhas` e `PATCH /api/v1/necessidades/:id/status`. A lista pública `GET /api/v1/necessidades` mostra apenas necessidades ativas e suas quantidades solicitada, entregue, reservada e restante.
+
+Doadores registram intenção em `POST /api/v1/doacoes-itens`, escolhendo `ENTREGA_NA_ONG` ou `RETIRADA`; `observacao`, `imagemId` e `dataEntrega` são opcionais. `GET /api/v1/doacoes-itens/minhas` e `/recebimentos` são restritos ao doador e à ONG relacionados. A ONG aceita (`ACEITA`) e marca a intenção aceita como entregue (`ENTREGUE`); as partes podem cancelar antes da entrega. Reservas concorrentes são serializadas para não ultrapassar a quantidade. Ao atingir o total, a necessidade passa a `ATENDIDA`; cancelar a necessidade cancela intenções abertas sem apagar entregas concluídas. Cada intenção é entregue integralmente, sem entrega parcial.
+
+## Seguidores, publicações e painel
+
+Doadores autenticados seguem ou deixam de seguir uma ONG por `POST`/`DELETE /api/v1/ongs/:id/seguir`; o vínculo composto impede duplicatas. `POST /api/v1/publicacoes` permite à ONG criar texto com imagem local opcional e campanha própria opcional. `GET /api/v1/publicacoes/minhas` lista suas publicações. `GET /api/v1/feed` retorna somente conteúdo das ONGs seguidas pelo doador, do mais recente para o mais antigo, com cursor por data/ID. `GET /api/v1/ongs/dashboard` retorna campanhas vigentes, encerradas, contagem de contribuições confirmadas e total confirmado em centavos fictícios.
 
 `PUT /api/v1/auth/dados-pessoais` aceita nome, sobrenome, CPF, data de nascimento, endereço, tipo sanguíneo, gênero e telefone. Os campos detalhados são cifrados com AES-256-GCM e autenticação vinculada ao usuário e ao nome do campo. O nome completo também atualiza o nome de exibição do perfil. A chave fica fora do banco em `PERSONAL_DATA_ENCRYPTION_KEY`.
 
@@ -162,7 +188,15 @@ Senhas usam scrypt com salt individual. O banco guarda apenas o hash do token de
 
 Exige `Authorization: Bearer <token>`. O `{id}` precisa ser o do próprio usuário da sessão (403 caso contrário), e apenas doadores possuem histórico. A resposta traz até 500 doações, das mais recentes para as mais antigas, em `doacoes`: `id`, `ong` (`id`, `nome`), `campanha` (`id`, `titulo`), `valorCentavos`, `data` (`AAAA-MM-DD`), `status` (`PENDENTE`, `CONFIRMADA` ou `CANCELADA`) e `anonima`.
 
-## Testes de autenticação
+## Recuperação de senha local e dados opcionais
+
+O Compose inclui uma caixa Mailpit sem relay externo. Para usar o MySQL já existente e a API no computador, inicie somente a caixa com `docker compose up -d mailpit`, aplique as migrações e configure `RECOVERY_ENABLED=true`, `SMTP_HOST=127.0.0.1` e `SMTP_PORT=1025` no `.env`. Reinicie a API. A caixa fica em [localhost:8025](http://localhost:8025); as portas SMTP e web ficam em loopback e podem ser alteradas por `SMTP_PUBLISHED_PORT` e `MAILPIT_WEB_PUBLISHED_PORT` (ajuste `SMTP_PORT` junto).
+
+`POST /api/v1/auth/recuperacao` recebe `email` e responde uniformemente. A mensagem contém código aleatório de uso único, válido por 15 minutos, armazenado só como hash. `POST /api/v1/auth/recuperacao/confirmar` recebe `email`, `codigo`, `novaSenha` e `confirmacaoSenha`; o sucesso revoga as sessões. Há limites de 5 solicitações e 10 confirmações por IP/15 minutos e 5 erros por código. O fluxo fica desabilitado sem configuração e não pode ser ativado em produção nesta entrega. Nunca publique a caixa local.
+
+`npm run seed:reference` acrescenta categorias por nome sem duplicação. `npm run seed:demo` é opcional e cria duas ONGs, campanhas, necessidades, publicações e um doador com R$ 100 fictícios. Tudo aparece como `[DEMO]`. As contas são `demo.ong@sosplus.example.test`, `demo.ong2@sosplus.example.test` e `demo.doador@sosplus.example.test`, com senha de demonstração `SosPlus-Demo-123!`. Repetir a carga não altera contas existentes nem seus saldos; `NODE_ENV=production` bloqueia o seed de demonstração. Nenhum seed roda no início da API ou do app.
+
+## Executar testes
 
 ```bash
 npm test

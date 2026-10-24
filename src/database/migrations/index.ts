@@ -17,6 +17,12 @@ import { createSessoes } from './015-create-sessoes.js';
 import { createLocalizacoesUsuario } from './016-create-localizacoes-usuario.js';
 import { createFotosPerfil } from './017-create-fotos-perfil.js';
 import { createDadosPessoaisUsuario } from './018-create-dados-pessoais-usuario.js';
+import { protectDoadorCpfIndex } from './019-protect-doador-cpf-index.js';
+import { createLocalImages } from './020-create-local-images.js';
+import { singleOngAddress } from './021-single-ong-address.js';
+import { campaignPublicationMeta } from './022-campaign-publication-meta.js';
+import { simulatedWalletIdempotency } from './023-simulated-wallet-idempotency.js';
+import { passwordRecovery } from './024-password-recovery.js';
 
 export const migrations: Migration[] = [
   createUsuarios,
@@ -36,7 +42,13 @@ export const migrations: Migration[] = [
   createSessoes,
   createLocalizacoesUsuario,
   createFotosPerfil,
-  createDadosPessoaisUsuario
+  createDadosPessoaisUsuario,
+  protectDoadorCpfIndex,
+  createLocalImages,
+  singleOngAddress,
+  campaignPublicationMeta,
+  simulatedWalletIdempotency,
+  passwordRecovery
 ];
 
 const migrationIds = migrations.map((migration) => migration.id);

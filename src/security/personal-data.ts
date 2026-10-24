@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHmac, randomBytes } from 'node:crypto';
 import { env } from '../config/env.js';
 
 const VERSION = 1;
@@ -25,6 +25,14 @@ export function assertPersonalDataEncryptionKey(): void {
 
 function additionalData(userId: string, field: string): Buffer {
   return Buffer.from(`sosplus:dados-pessoais:${userId}:${field}`, 'utf8');
+}
+
+export function fingerprintPersonalData(field: string, value: string): Buffer {
+  const key = createHmac('sha256', encryptionKey()).update('sosplus:indice-dados-pessoais:v1').digest();
+  return createHmac('sha256', key)
+    .update(`sosplus:dados-pessoais:${field}:v1\0`, 'utf8')
+    .update(value, 'utf8')
+    .digest();
 }
 
 export function encryptPersonalData(userId: string, field: string, value: string | null): Buffer | null {
