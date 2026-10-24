@@ -2,6 +2,7 @@ import express from 'express';
 import { ongsRouter } from './routes/ongs.js';
 import { healthRouter } from './routes/health.js';
 import { authRouter } from './routes/auth.js';
+import { usuariosRouter } from './routes/usuarios.js';
 import { AuthError } from './auth/validation.js';
 import { httpLogger, logError, logWarn } from './observability/logger.js';
 
@@ -21,6 +22,7 @@ app.get('/', (_request, response) => {
 app.use('/api/v1/health', healthRouter);
 app.use('/api/v1/auth', authRouter);
 app.use('/api/v1/ongs', ongsRouter);
+app.use('/api/v1/usuarios', usuariosRouter);
 
 app.use((_request, response) => {
   response.status(404).json({ error: 'Rota não encontrada.' });

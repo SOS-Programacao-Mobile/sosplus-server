@@ -154,6 +154,14 @@ No login, envie `email`, `senha` e `tipo`. A resposta contém `token`, `expiresA
 
 Senhas usam scrypt com salt individual. O banco guarda apenas o hash do token de sessão; nunca a confirmação de senha. As respostas públicas não incluem hashes. Cadastro e login têm limite compartilhado de 30 tentativas por IP a cada 15 minutos, em memória por processo. Erros de validação retornam 400, credenciais/sessões inválidas 401, duplicidades 409 e excesso de tentativas 429. Configure HTTPS ao disponibilizar a API fora do desenvolvimento local.
 
+## Doações do usuário
+
+| Método | Rota | Uso |
+| --- | --- | --- |
+| GET | `/api/v1/usuarios/{id}/doacoes` | Histórico de doações financeiras do doador autenticado. |
+
+Exige `Authorization: Bearer <token>`. O `{id}` precisa ser o do próprio usuário da sessão (403 caso contrário), e apenas doadores possuem histórico. A resposta traz até 500 doações, das mais recentes para as mais antigas, em `doacoes`: `id`, `ong` (`id`, `nome`), `campanha` (`id`, `titulo`), `valorCentavos`, `data` (`AAAA-MM-DD`), `status` (`PENDENTE`, `CONFIRMADA` ou `CANCELADA`) e `anonima`.
+
 ## Testes de autenticação
 
 ```bash
